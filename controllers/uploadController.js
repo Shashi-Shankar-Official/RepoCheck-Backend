@@ -29,25 +29,25 @@ if (!fs.existsSync('uploads')){
 
 // --- 2. Constants for Normal Ranges and Order ---
 const NORMAL_RANGES = {
-    "Hemoglobin (g/dL)": (12.0, 16.0),
-    "RBC Count (mil/cumm)": (4.2, 5.4),
-    "PCV/HCT (%)": (36.0, 46.0),
-    "MCV (fL)": (80.0, 100.0),
-    "MCH (pg)": (27.0, 33.0),
-    "MCHC (g/dL)": (32.0, 36.0),
-    "RDW-CV (%)": (11.5, 14.5),
-    "Platelet Count (x10^3/uL)": (150, 450),
-    "WBC/TLC Count (/cumm)": (4000, 11000),
-    "Neutrophils (%)": (40, 70),
-    "Lymphocytes (%)": (20, 40),
-    "Monocytes (%)": (2, 10),
-    "Eosinophils (%)": (1, 6),
-    "Basophils (%)": (0, 1),
-    "Blood Urea (mg/dL)": (10, 40),
-    "Serum Creatinine (mg/dL)": (0.6, 1.3),
-    "Sodium (mEq/L)": (135, 145),
-    "Potassium (mEq/L)": (3.5, 5.0),
-    "Chloride (mEq/L)": (98, 107),
+    "Hemoglobin (g/dL)": [12.0, 16.0],
+    "RBC Count (mil/cumm)": [4.2, 5.4],
+    "PCV/HCT (%)": [36.0, 46.0],
+    "MCV (fL)": [80.0, 100.0],
+    "MCH (pg)": [27.0, 33.0],
+    "MCHC (g/dL)": [32.0, 36.0],
+    "RDW-CV (%)": [11.5, 14.5],
+    "Platelet Count (x10^3/uL)": [150, 450],
+    "WBC/TLC Count (/cumm)": [4000, 11000],
+    "Neutrophils (%)": [40, 70],
+    "Lymphocytes (%)": [20, 40],
+    "Monocytes (%)": [2, 10],
+    "Eosinophils (%)": [1, 6],
+    "Basophils (%)": [0, 1],
+    "Blood Urea (mg/dL)": [10, 40],
+    "Serum Creatinine (mg/dL)": [0.6, 1.3],
+    "Sodium (mEq/L)": [135, 145],
+    "Potassium (mEq/L)": [3.5, 5.0],
+    "Chloride (mEq/L)": [98, 107],
 };
 
 const ORDERED_KEYS = Object.keys(NORMAL_RANGES); // This maintains the strict order
@@ -131,6 +131,14 @@ const uploadFiles = async (req, res) => {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'No files were uploaded.' });
         }
+        // --- Custom validation: allow up to 3 images or 1 PDF, not both ---
+        const imageFiles = req.files.filter(f => f.mimetype.startsWith('image/'));
+        const pdfFiles = req.files.filter(f => f.mimetype === 'application/pdf');
+        if ((pdfFiles.length > 1) || (imageFiles.length > 3) || (pdfFiles.length > 0 && imageFiles.length > 0)) {
+            // Clean up uploaded files
+            req.files.forEach(f => fs.unlink(f.path, () => {}));
+            return res.status(400).json({ message: 'Upload a maximum of 3 images OR 1 PDF only.' });
+        }
         
         // Add original files to cleanup list
         req.files.forEach(f => filesToCleanUp.push(f.path));
@@ -172,7 +180,16 @@ const uploadFiles = async (req, res) => {
         
         The required order is strictly: ${ORDERED_KEYS.join(', ')}.
 
-        For any of these 19 fields that you **cannot find** a value for in the provided text, you **MUST** use the default value of **0** (zero) in the corresponding position in the list. Do not use null or strings; all items must be numbers.`;
+        For any of these 19 fields that you **cannot find** a value for in the provided text, you **MUST** use the default value of **0** (zero) in the corresponding position in the list. Do not use null or strings; all items must be numbers.
+
+        ---
+        Here is an example of the expected output:
+        { "features": [13.5, 4.8, 40.2, 90.1, 29.5, 34.0, 12.8, 250, 8000, 60, 30, 5, 2, 0, 25, 1.0, 140, 4.2, 102] }
+        
+        Here is a sample of the kind of text you may receive:
+        "Hemoglobin: 13.5 g/dL\nRBC Count: 4.8 mil/cumm\nPCV/HCT: 40.2%\nMCV: 90.1 fL\nMCH: 29.5 pg\nMCHC: 34.0 g/dL\nRDW-CV: 12.8%\nPlatelet Count: 250 x10^3/uL\nWBC/TLC Count: 8000 /cumm\nNeutrophils: 60%\nLymphocytes: 30%\nMonocytes: 5%\nEosinophils: 2%\nBasophils: 0%\nBlood Urea: 25 mg/dL\nSerum Creatinine: 1.0 mg/dL\nSodium: 140 mEq/L\nPotassium: 4.2 mEq/L\nChloride: 102 mEq/L"
+        
+        If the field name in the text is slightly different (e.g., "Hb" for Hemoglobin, or "WBC" for "WBC/TLC Count"), use your best judgment to match it to the correct field in the required order. Ignore any extra or unrelated values.`;
         
         const geminiResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
